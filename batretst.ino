@@ -1,68 +1,62 @@
 class BatteryMonitor {
-public:
-    BatteryMonitor(int pin, float calibration = 0.36) : _pin(pin), _calibration(calibration) {}
+private:
+    int adcPin;           
+    float adcMaxValue;   
+    float referenceVoltage;
+    float voltageDivider; 
 
-    void begin() {
-        Serial.begin(9600);
-    }
+public:
+    BatteryMonitor(int pin, float maxAdcValue = 4096.0, float refVoltage = 3.3, float divider = 1.0) 
+        : adcPin(pin), adcMaxValue(maxAdcValue), referenceVoltage(refVoltage), voltageDivider(divider) {}
 
     int readADCRaw() {
-        return analogRead(_pin);
+        return analogRead(adcPin);
     }
 
     float getBatteryVoltage() {
-        int sensorValue = readADCRaw();
-        return (((sensorValue * 3.3) / 1024) * 2 + _calibration); // Tegangan referensi ADC ESP8266 adalah 1.0V, dikalikan 2 karena pembagi tegangan
+        float rawValue = readADCRaw();
+        float voltage = (rawValue / adcMaxValue) * referenceVoltage * voltageDivider;
+        return voltage;
     }
 
-  int getBatteryPercentage() {
-    float voltage = getBatteryVoltage();
-    int percentage = mapfloat(voltage, 0.0, 4.2, 0, 100); // Sesuaikan batas atas dengan tegangan yang biasanya tercapai oleh baterai LiPo
-
-    if (percentage > 100) {
-        percentage = 100;
-    } else if (percentage < 0) {
-        percentage = 0;
+    int getBatteryPercentage() {
+        float voltage = getBatteryVoltage();
+        float minVoltage = 3.0;
+        float maxVoltage = 4.2;
+      
+        int percentage = (int)(((voltage - minVoltage) / (maxVoltage - minVoltage)) * 100.0); 
+        percentage = constrain(percentage, 0, 100); 
+        return percentage;
     }
-
-    return percentage;
-}
 
     bool isBatteryLow(float threshold = 3.0) {
-        return getBatteryVoltage() < threshold;
-    }
-
-    void sendBatteryStatus() {
-        int rawValue = readADCRaw();
         float voltage = getBatteryVoltage();
-        int percentage = getBatteryPercentage();
-
-       
-        Serial.print("\t Tegangan Baterai = ");
-        Serial.print(voltage);
-        Serial.print(" V");
-        Serial.print("\t Persentase Baterai = ");
-        Serial.print(percentage);
-        Serial.println(" %");
-    }
-
-private:
-    int _pin;
-    float _calibration;
-
-    float mapfloat(float x, float in_min, float in_max, float out_min, float out_max) {
-        return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+        return (voltage < threshold);
     }
 };
 
-// Penggunaan kelas
-BatteryMonitor batteryMonitor(A0);
+BatteryMonitor batteryMonitor(27, 4096.0, 3.3, 1.3); 
 
 void setup() {
-    batteryMonitor.begin();
+    Serial.begin(9600);
 }
 
 void loop() {
-    batteryMonitor.sendBatteryStatus();
-    delay(1000);
+    float voltage = batteryMonitor.getBatteryVoltage();
+    int percentage = batteryMonitor.getBatteryPercentage();
+    bool isLow = batteryMonitor.isBatteryLow();
+
+    Serial.print("Battery Voltage: ");
+    Serial.print(voltage);
+    Serial.println(" V");
+
+    Serial.print("Battery Percentage: ");
+    Serial.print(percentage);
+    Serial.println(" %");
+
+    if (isLow) {
+        Serial.println("Warning: Battery is low!");
+    }
+
+    delay(1000); // Update every second
 }
